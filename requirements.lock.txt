@@ -1,0 +1,21 @@
+# ============================================================
+# NEMT Django API — exact locked versions
+# Generated against Python 3.12 on Ubuntu 24.04
+#
+# Use this file for reproducible installs:
+#   pip install -r requirements.lock.txt
+#
+# To regenerate after upgrading packages:
+#   pip install -r requirements.txt
+#   pip freeze > requirements.lock.txt
+# ============================================================
+
+Django==4.2.30
+djangorestframework==3.17.1
+django-filter==24.3
+psycopg2-binary==2.9.12
+python-dotenv==1.2.2
+
+# Django's own dependencies
+asgiref==3.11.1
+sqlparse==0.5.5
