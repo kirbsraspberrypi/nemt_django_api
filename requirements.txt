@@ -1,0 +1,33 @@
+# ============================================================
+# NEMT Django API — Python dependencies
+# Python 3.11+ required
+# ============================================================
+
+# Core framework
+# Django 4.2 is the current LTS release (supported until April 2026).
+Django>=4.2,<5.0
+
+# REST API layer
+djangorestframework>=3.14,<4.0
+
+# Filtering support (?status=..., ?rider_email=...)
+# django-filter 25+ requires Django 5.2+, so we cap at <25.
+django-filter>=23.0,<25.0
+
+# PostgreSQL driver
+# psycopg2-binary bundles the C extension — no libpq-dev needed locally.
+# For production, swap for psycopg2 (non-binary) and install libpq-dev.
+psycopg2-binary>=2.9,<3.0
+
+# Loads environment variables from .env into os.environ
+python-dotenv>=1.0,<2.0
+
+
+# ============================================================
+# Installed automatically as dependencies of the above.
+# Listed here for transparency.
+# ============================================================
+
+# Required by Django
+asgiref>=3.6,<4.0
+sqlparse>=0.3,<1.0
