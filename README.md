@@ -1,2 +1,3 @@
-# nemt_django_api
+# NEMT Django API
+
 This project is for NEMT Django API only.
