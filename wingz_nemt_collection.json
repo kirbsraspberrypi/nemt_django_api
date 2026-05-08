@@ -1,0 +1,1338 @@
+{
+  "info": {
+    "name": "Wingz API — Assessment Test Suite",
+    "description": "Postman collection covering all spec requirements:\n1. Authentication (admin role only)\n2. Ride List API — pagination, filtering, sorting\n3. todays_ride_events field (24h window)\n4. Full CRUD for Rides and Users\n5. Bonus SQL verification notes\n\nSetup:\n1. Import this file into Postman\n2. Set the 'base_url' variable to http://127.0.0.1:8000\n3. Run '0. Get Admin Token' first — token is saved automatically\n4. All other requests use the saved token",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8000", "type": "string" },
+    { "key": "token", "value": "", "type": "string" },
+    { "key": "rider_token", "value": "", "type": "string" },
+    { "key": "ride_id", "value": "1", "type": "string" },
+    { "key": "user_id", "value": "1", "type": "string" }
+  ],
+  "item": [
+
+    {
+      "name": "0. Setup — Authentication",
+      "item": [
+
+        {
+          "name": "0.1 Get Admin Token (saves automatically)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('Response has token', function() {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.token).to.be.a('string');",
+                  "    pm.collectionVariables.set('token', json.token);",
+                  "    console.log('Token saved:', json.token);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"admin@wingz.test\",\n    \"password\": \"testpass123\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/auth/token/", "host": ["{{base_url}}"], "path": ["api", "auth", "token", ""] }
+          }
+        },
+
+        {
+          "name": "0.2 Get Non-Admin Token — rider (saves automatically)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('Rider token saved', function() {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.token).to.be.a('string');",
+                  "    pm.collectionVariables.set('rider_token', json.token);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"alice@wingz.test\",\n    \"password\": \"testpass123\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/auth/token/", "host": ["{{base_url}}"], "path": ["api", "auth", "token", ""] }
+          }
+        },
+
+        {
+          "name": "0.3 SPEC: Wrong password → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400', function() { pm.response.to.have.status(400); });",
+                  "pm.test('Error message present', function() {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.non_field_errors).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"admin@wingz.test\",\n    \"password\": \"wrongpassword\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/auth/token/", "host": ["{{base_url}}"], "path": ["api", "auth", "token", ""] }
+          }
+        },
+
+        {
+          "name": "0.4 SPEC: No token → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 401', function() { pm.response.to.have.status(401); });",
+                  "pm.test('Detail message present', function() {",
+                  "    pm.expect(pm.response.json().detail).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/rides/", "host": ["{{base_url}}"], "path": ["api", "rides", ""] }
+          }
+        },
+
+        {
+          "name": "0.5 SPEC: Invalid token → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 401', function() { pm.response.to.have.status(401); });",
+                  "pm.test('Invalid token message', function() {",
+                  "    pm.expect(pm.response.json().detail).to.include('Invalid token');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token thisisnotavalidtoken" }],
+            "url": { "raw": "{{base_url}}/api/rides/", "host": ["{{base_url}}"], "path": ["api", "rides", ""] }
+          }
+        },
+
+        {
+          "name": "0.6 SPEC: Non-admin token (rider) → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', function() { pm.response.to.have.status(403); });",
+                  "pm.test('Admin role required message', function() {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.detail).to.include('admin');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{rider_token}}" }],
+            "url": { "raw": "{{base_url}}/api/rides/", "host": ["{{base_url}}"], "path": ["api", "rides", ""] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "1. SPEC: Ride List API",
+      "item": [
+
+        {
+          "name": "1.1 SPEC: List rides — default sort (newest pickup first)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('Paginated response shape', function() {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('count');",
+                  "    pm.expect(json).to.have.property('next');",
+                  "    pm.expect(json).to.have.property('previous');",
+                  "    pm.expect(json.results).to.be.an('array');",
+                  "});",
+                  "pm.test('Each ride has required fields', function() {",
+                  "    var ride = pm.response.json().results[0];",
+                  "    pm.expect(ride).to.have.property('id_ride');",
+                  "    pm.expect(ride).to.have.property('status');",
+                  "    pm.expect(ride).to.have.property('id_rider');",
+                  "    pm.expect(ride).to.have.property('id_driver');",
+                  "    pm.expect(ride).to.have.property('pickup_latitude');",
+                  "    pm.expect(ride).to.have.property('pickup_longitude');",
+                  "    pm.expect(ride).to.have.property('dropoff_latitude');",
+                  "    pm.expect(ride).to.have.property('dropoff_longitude');",
+                  "    pm.expect(ride).to.have.property('pickup_time');",
+                  "    pm.collectionVariables.set('ride_id', ride.id_ride);",
+                  "});",
+                  "pm.test('SPEC: Each ride includes nested rider user object', function() {",
+                  "    var ride = pm.response.json().results[0];",
+                  "    pm.expect(ride.rider).to.be.an('object');",
+                  "    pm.expect(ride.rider).to.have.property('id_user');",
+                  "    pm.expect(ride.rider).to.have.property('email');",
+                  "    pm.expect(ride.rider).to.have.property('first_name');",
+                  "    pm.expect(ride.rider).to.have.property('role');",
+                  "});",
+                  "pm.test('SPEC: Each ride includes nested driver user object', function() {",
+                  "    var ride = pm.response.json().results[0];",
+                  "    pm.expect(ride.driver).to.be.an('object');",
+                  "    pm.expect(ride.driver).to.have.property('id_user');",
+                  "    pm.expect(ride.driver).to.have.property('email');",
+                  "    pm.expect(ride.driver).to.have.property('first_name');",
+                  "    pm.expect(ride.driver).to.have.property('role');",
+                  "});",
+                  "pm.test('SPEC: Each ride has todays_ride_events field (array, never null)', function() {",
+                  "    pm.response.json().results.forEach(function(ride) {",
+                  "        pm.expect(ride.todays_ride_events).to.be.an('array');",
+                  "    });",
+                  "});",
+                  "pm.test('SPEC: Password not exposed in user objects', function() {",
+                  "    var ride = pm.response.json().results[0];",
+                  "    pm.expect(ride.rider).to.not.have.property('password');",
+                  "    pm.expect(ride.driver).to.not.have.property('password');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/rides/", "host": ["{{base_url}}"], "path": ["api", "rides", ""] }
+          }
+        },
+
+        {
+          "name": "1.2 SPEC: Pagination — page 1, 5 per page",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('Returns exactly 5 results', function() {",
+                  "    pm.expect(pm.response.json().results.length).to.be.at.most(5);",
+                  "});",
+                  "pm.test('next link present', function() {",
+                  "    pm.expect(pm.response.json().next).to.not.be.null;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?page=1&page_size=5",
+              "host": ["{{base_url}}"], "path": ["api", "rides", ""],
+              "query": [{ "key": "page", "value": "1" }, { "key": "page_size", "value": "5" }]
+            }
+          }
+        },
+
+        {
+          "name": "1.3 SPEC: Pagination — page beyond last → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', function() { pm.response.to.have.status(404); });",
+                  "pm.test('Invalid page message', function() {",
+                  "    pm.expect(pm.response.json().detail).to.include('Invalid page');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?page=9999",
+              "host": ["{{base_url}}"], "path": ["api", "rides", ""],
+              "query": [{ "key": "page", "value": "9999" }]
+            }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "2. SPEC: Filtering",
+      "item": [
+
+        {
+          "name": "2.1 SPEC: Filter by status — en-route",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('All results have status en-route', function() {",
+                  "    pm.response.json().results.forEach(function(ride) {",
+                  "        pm.expect(ride.status.toLowerCase()).to.equal('en-route');",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?status=en-route",
+              "host": ["{{base_url}}"], "path": ["api", "rides", ""],
+              "query": [{ "key": "status", "value": "en-route" }]
+            }
+          }
+        },
+
+        {
+          "name": "2.2 SPEC: Filter by status — pickup",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('All results have status pickup', function() {",
+                  "    pm.response.json().results.forEach(function(ride) {",
+                  "        pm.expect(ride.status.toLowerCase()).to.equal('pickup');",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?status=pickup",
+              "host": ["{{base_url}}"], "path": ["api", "rides", ""],
+              "query": [{ "key": "status", "value": "pickup" }]
+            }
+          }
+        },
+
+        {
+          "name": "2.3 SPEC: Filter by status — dropoff",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('All results have status dropoff', function() {",
+                  "    pm.response.json().results.forEach(function(ride) {",
+                  "        pm.expect(ride.status.toLowerCase()).to.equal('dropoff');",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?status=dropoff",
+              "host": ["{{base_url}}"], "path": ["api", "rides", ""],
+              "query": [{ "key": "status", "value": "dropoff" }]
+            }
+          }
+        },
+
+        {
+          "name": "2.4 SPEC: Filter by status — case insensitive",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('Case-insensitive filter works', function() {",
+                  "    pm.response.json().results.forEach(function(ride) {",
+                  "        pm.expect(ride.status.toLowerCase()).to.equal('en-route');",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?status=EN-ROUTE",
+              "host": ["{{base_url}}"], "path": ["api", "rides", ""],
+              "query": [{ "key": "status", "value": "EN-ROUTE" }]
+            }
+          }
+        },
+
+        {
+          "name": "2.5 SPEC: Filter by status — invalid value → empty list",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('Empty results for invalid status', function() {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.count).to.equal(0);",
+                  "    pm.expect(json.results).to.be.an('array').that.is.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?status=flying",
+              "host": ["{{base_url}}"], "path": ["api", "rides", ""],
+              "query": [{ "key": "status", "value": "flying" }]
+            }
+          }
+        },
+
+        {
+          "name": "2.6 SPEC: Filter by rider email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('All results belong to correct rider', function() {",
+                  "    pm.response.json().results.forEach(function(ride) {",
+                  "        pm.expect(ride.rider.email.toLowerCase()).to.equal('alice@wingz.test');",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?rider_email=alice@wingz.test",
+              "host": ["{{base_url}}"], "path": ["api", "rides", ""],
+              "query": [{ "key": "rider_email", "value": "alice@wingz.test" }]
+            }
+          }
+        },
+
+        {
+          "name": "2.7 SPEC: Filter by rider email — case insensitive",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('Case-insensitive email filter works', function() {",
+                  "    pm.response.json().results.forEach(function(ride) {",
+                  "        pm.expect(ride.rider.email.toLowerCase()).to.equal('alice@wingz.test');",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?rider_email=ALICE@WINGZ.TEST",
+              "host": ["{{base_url}}"], "path": ["api", "rides", ""],
+              "query": [{ "key": "rider_email", "value": "ALICE@WINGZ.TEST" }]
+            }
+          }
+        },
+
+        {
+          "name": "2.8 SPEC: Filter by rider email — no match → empty list",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('Empty results for unknown email', function() {",
+                  "    pm.expect(pm.response.json().count).to.equal(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?rider_email=nobody@nowhere.com",
+              "host": ["{{base_url}}"], "path": ["api", "rides", ""],
+              "query": [{ "key": "rider_email", "value": "nobody@nowhere.com" }]
+            }
+          }
+        },
+
+        {
+          "name": "2.9 SPEC: Combined filter — status + rider_email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('All results match both filters', function() {",
+                  "    pm.response.json().results.forEach(function(ride) {",
+                  "        pm.expect(ride.status.toLowerCase()).to.equal('en-route');",
+                  "        pm.expect(ride.rider.email.toLowerCase()).to.equal('alice@wingz.test');",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?status=en-route&rider_email=alice@wingz.test",
+              "host": ["{{base_url}}"], "path": ["api", "rides", ""],
+              "query": [
+                { "key": "status", "value": "en-route" },
+                { "key": "rider_email", "value": "alice@wingz.test" }
+              ]
+            }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "3. SPEC: Sorting",
+      "item": [
+
+        {
+          "name": "3.1 SPEC: Sort by pickup_time ascending",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('Results sorted by pickup_time ascending', function() {",
+                  "    var results = pm.response.json().results;",
+                  "    for (var i = 1; i < results.length; i++) {",
+                  "        var prev = new Date(results[i-1].pickup_time);",
+                  "        var curr = new Date(results[i].pickup_time);",
+                  "        pm.expect(prev.getTime()).to.be.at.most(curr.getTime());",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?sort=pickup_time",
+              "host": ["{{base_url}}"], "path": ["api", "rides", ""],
+              "query": [{ "key": "sort", "value": "pickup_time" }]
+            }
+          }
+        },
+
+        {
+          "name": "3.2 SPEC: Sort by distance — valid GPS point",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('Returns paginated results', function() {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.results).to.be.an('array');",
+                  "    pm.expect(json.count).to.be.above(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?sort=distance&lat=37.7749&lng=-122.4194",
+              "host": ["{{base_url}}"], "path": ["api", "rides", ""],
+              "query": [
+                { "key": "sort", "value": "distance" },
+                { "key": "lat", "value": "37.7749" },
+                { "key": "lng", "value": "-122.4194" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "3.3 SPEC: Sort by distance — missing lat → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400', function() { pm.response.to.have.status(400); });",
+                  "pm.test('Error mentions lat and lng required', function() {",
+                  "    var detail = pm.response.json().detail;",
+                  "    pm.expect(detail).to.include('lat');",
+                  "    pm.expect(detail).to.include('lng');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?sort=distance&lng=-122.4194",
+              "host": ["{{base_url}}"], "path": ["api", "rides", ""],
+              "query": [
+                { "key": "sort", "value": "distance" },
+                { "key": "lng", "value": "-122.4194" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "3.4 SPEC: Sort by distance — missing lng → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400', function() { pm.response.to.have.status(400); });",
+                  "pm.test('Error mentions lat and lng required', function() {",
+                  "    var detail = pm.response.json().detail;",
+                  "    pm.expect(detail).to.include('lat');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?sort=distance&lat=37.7749",
+              "host": ["{{base_url}}"], "path": ["api", "rides", ""],
+              "query": [
+                { "key": "sort", "value": "distance" },
+                { "key": "lat", "value": "37.7749" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "3.5 SPEC: Sort by distance — non-numeric lat lng → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400', function() { pm.response.to.have.status(400); });",
+                  "pm.test('Error mentions floating-point', function() {",
+                  "    var detail = pm.response.json().detail;",
+                  "    pm.expect(detail).to.include('floating');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?sort=distance&lat=abc&lng=xyz",
+              "host": ["{{base_url}}"], "path": ["api", "rides", ""],
+              "query": [
+                { "key": "sort", "value": "distance" },
+                { "key": "lat", "value": "abc" },
+                { "key": "lng", "value": "xyz" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "3.6 SPEC: Sort + filter + pagination combined",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('Filtered and paginated correctly', function() {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.results.length).to.be.at.most(5);",
+                  "    json.results.forEach(function(ride) {",
+                  "        pm.expect(ride.status.toLowerCase()).to.equal('en-route');",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?sort=pickup_time&status=en-route&page=1&page_size=5",
+              "host": ["{{base_url}}"], "path": ["api", "rides", ""],
+              "query": [
+                { "key": "sort", "value": "pickup_time" },
+                { "key": "status", "value": "en-route" },
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "5" }
+              ]
+            }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "4. SPEC: Performance — todays_ride_events",
+      "item": [
+
+        {
+          "name": "4.1 SPEC: todays_ride_events is always an array (never null)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('SPEC: todays_ride_events is array on every ride, never null', function() {",
+                  "    pm.response.json().results.forEach(function(ride) {",
+                  "        pm.expect(ride.todays_ride_events).to.not.be.null;",
+                  "        pm.expect(ride.todays_ride_events).to.not.be.undefined;",
+                  "        pm.expect(ride.todays_ride_events).to.be.an('array');",
+                  "    });",
+                  "});",
+                  "pm.test('SPEC: todays_ride_events items have correct fields', function() {",
+                  "    pm.response.json().results.forEach(function(ride) {",
+                  "        ride.todays_ride_events.forEach(function(event) {",
+                  "            pm.expect(event).to.have.property('id_ride_event');",
+                  "            pm.expect(event).to.have.property('description');",
+                  "            pm.expect(event).to.have.property('created_at');",
+                  "        });",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/rides/", "host": ["{{base_url}}"], "path": ["api", "rides", ""] }
+          }
+        },
+
+        {
+          "name": "4.2 SPEC: Retrieve single ride — todays_ride_events present",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('SPEC: todays_ride_events is array on single ride', function() {",
+                  "    pm.expect(pm.response.json().todays_ride_events).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/rides/{{ride_id}}/", "host": ["{{base_url}}"], "path": ["api", "rides", "{{ride_id}}", ""] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "5. SPEC: Rides CRUD",
+      "item": [
+
+        {
+          "name": "5.1 Retrieve single ride — valid ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('Single ride object returned', function() {",
+                  "    var ride = pm.response.json();",
+                  "    pm.expect(ride).to.have.property('id_ride');",
+                  "    pm.expect(ride).to.have.property('rider');",
+                  "    pm.expect(ride).to.have.property('driver');",
+                  "    pm.expect(ride).to.have.property('todays_ride_events');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/rides/{{ride_id}}/", "host": ["{{base_url}}"], "path": ["api", "rides", "{{ride_id}}", ""] }
+          }
+        },
+
+        {
+          "name": "5.2 Retrieve single ride — does not exist → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', function() { pm.response.to.have.status(404); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/rides/99999/", "host": ["{{base_url}}"], "path": ["api", "rides", "99999", ""] }
+          }
+        },
+
+        {
+          "name": "5.3 Create ride — valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201', function() { pm.response.to.have.status(201); });",
+                  "pm.test('New ride has id_ride', function() {",
+                  "    var ride = pm.response.json();",
+                  "    pm.expect(ride).to.have.property('id_ride');",
+                  "    pm.collectionVariables.set('new_ride_id', ride.id_ride);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"en-route\",\n    \"id_rider\": 5,\n    \"id_driver\": 2,\n    \"pickup_latitude\": 37.7749,\n    \"pickup_longitude\": -122.4194,\n    \"dropoff_latitude\": 37.7600,\n    \"dropoff_longitude\": -122.4400,\n    \"pickup_time\": \"2024-06-01T09:00:00Z\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/rides/", "host": ["{{base_url}}"], "path": ["api", "rides", ""] }
+          }
+        },
+
+        {
+          "name": "5.4 Create ride — missing status → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400', function() { pm.response.to.have.status(400); });",
+                  "pm.test('status field error present', function() {",
+                  "    pm.expect(pm.response.json()).to.have.property('status');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"id_rider\": 5,\n    \"id_driver\": 2,\n    \"pickup_latitude\": 37.7749,\n    \"pickup_longitude\": -122.4194,\n    \"dropoff_latitude\": 37.7600,\n    \"dropoff_longitude\": -122.4400,\n    \"pickup_time\": \"2024-06-01T09:00:00Z\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/rides/", "host": ["{{base_url}}"], "path": ["api", "rides", ""] }
+          }
+        },
+
+        {
+          "name": "5.5 Create ride — invalid status value → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400', function() { pm.response.to.have.status(400); });",
+                  "pm.test('Invalid choice error', function() {",
+                  "    pm.expect(pm.response.json()).to.have.property('status');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"flying\",\n    \"id_rider\": 5,\n    \"id_driver\": 2,\n    \"pickup_latitude\": 37.7749,\n    \"pickup_longitude\": -122.4194,\n    \"dropoff_latitude\": 37.7600,\n    \"dropoff_longitude\": -122.4400,\n    \"pickup_time\": \"2024-06-01T09:00:00Z\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/rides/", "host": ["{{base_url}}"], "path": ["api", "rides", ""] }
+          }
+        },
+
+        {
+          "name": "5.6 Create ride — non-existent id_rider → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400', function() { pm.response.to.have.status(400); });",
+                  "pm.test('id_rider error present', function() {",
+                  "    pm.expect(pm.response.json()).to.have.property('id_rider');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"en-route\",\n    \"id_rider\": 99999,\n    \"id_driver\": 2,\n    \"pickup_latitude\": 37.7749,\n    \"pickup_longitude\": -122.4194,\n    \"dropoff_latitude\": 37.7600,\n    \"dropoff_longitude\": -122.4400,\n    \"pickup_time\": \"2024-06-01T09:00:00Z\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/rides/", "host": ["{{base_url}}"], "path": ["api", "rides", ""] }
+          }
+        },
+
+        {
+          "name": "5.7 Partial update ride (PATCH) — status only",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('Status updated to dropoff', function() {",
+                  "    pm.expect(pm.response.json().status).to.equal('dropoff');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Token {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n    \"status\": \"dropoff\"\n}" },
+            "url": { "raw": "{{base_url}}/api/rides/{{ride_id}}/", "host": ["{{base_url}}"], "path": ["api", "rides", "{{ride_id}}", ""] }
+          }
+        },
+
+        {
+          "name": "5.8 Full update ride (PUT) — valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Token {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"pickup\",\n    \"id_rider\": 5,\n    \"id_driver\": 2,\n    \"pickup_latitude\": 37.7749,\n    \"pickup_longitude\": -122.4194,\n    \"dropoff_latitude\": 37.7600,\n    \"dropoff_longitude\": -122.4400,\n    \"pickup_time\": \"2024-06-01T09:00:00Z\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/rides/{{ride_id}}/", "host": ["{{base_url}}"], "path": ["api", "rides", "{{ride_id}}", ""] }
+          }
+        },
+
+        {
+          "name": "5.9 Delete ride — valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204', function() { pm.response.to.have.status(204); });",
+                  "pm.test('Empty body on delete', function() {",
+                  "    pm.expect(pm.response.text()).to.be.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/rides/{{ride_id}}/", "host": ["{{base_url}}"], "path": ["api", "rides", "{{ride_id}}", ""] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "6. SPEC: Users CRUD",
+      "item": [
+
+        {
+          "name": "6.1 List users — password never exposed",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('SPEC: Password not exposed on any user', function() {",
+                  "    pm.response.json().results.forEach(function(user) {",
+                  "        pm.expect(user).to.not.have.property('password');",
+                  "    });",
+                  "});",
+                  "pm.test('User has correct fields', function() {",
+                  "    var user = pm.response.json().results[0];",
+                  "    pm.expect(user).to.have.property('id_user');",
+                  "    pm.expect(user).to.have.property('email');",
+                  "    pm.expect(user).to.have.property('first_name');",
+                  "    pm.expect(user).to.have.property('last_name');",
+                  "    pm.expect(user).to.have.property('phone_number');",
+                  "    pm.expect(user).to.have.property('role');",
+                  "    pm.collectionVariables.set('user_id', user.id_user);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/users/", "host": ["{{base_url}}"], "path": ["api", "users", ""] }
+          }
+        },
+
+        {
+          "name": "6.2 Retrieve single user — no password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('No password in response', function() {",
+                  "    pm.expect(pm.response.json()).to.not.have.property('password');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/users/{{user_id}}/", "host": ["{{base_url}}"], "path": ["api", "users", "{{user_id}}", ""] }
+          }
+        },
+
+        {
+          "name": "6.3 Create user — valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201', function() { pm.response.to.have.status(201); });",
+                  "pm.test('Password not in response', function() {",
+                  "    pm.expect(pm.response.json()).to.not.have.property('password');",
+                  "});",
+                  "pm.test('User has id_user', function() {",
+                  "    pm.expect(pm.response.json()).to.have.property('id_user');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"newdriver@wingz.test\",\n    \"password\": \"securepass123\",\n    \"first_name\": \"New\",\n    \"last_name\": \"Driver\",\n    \"phone_number\": \"555-9999\",\n    \"role\": \"driver\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/users/", "host": ["{{base_url}}"], "path": ["api", "users", ""] }
+          }
+        },
+
+        {
+          "name": "6.4 Create user — duplicate email → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400', function() { pm.response.to.have.status(400); });",
+                  "pm.test('email error present', function() {",
+                  "    pm.expect(pm.response.json()).to.have.property('email');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"admin@wingz.test\",\n    \"password\": \"securepass123\",\n    \"first_name\": \"Duplicate\",\n    \"last_name\": \"Admin\",\n    \"role\": \"admin\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/users/", "host": ["{{base_url}}"], "path": ["api", "users", ""] }
+          }
+        },
+
+        {
+          "name": "6.5 Create user — password too short → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400', function() { pm.response.to.have.status(400); });",
+                  "pm.test('Password error present', function() {",
+                  "    pm.expect(pm.response.json()).to.have.property('password');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"shortpass@wingz.test\",\n    \"password\": \"abc\",\n    \"first_name\": \"Short\",\n    \"last_name\": \"Pass\",\n    \"role\": \"rider\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/users/", "host": ["{{base_url}}"], "path": ["api", "users", ""] }
+          }
+        },
+
+        {
+          "name": "6.6 Create user — invalid role → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400', function() { pm.response.to.have.status(400); });",
+                  "pm.test('Role error present', function() {",
+                  "    pm.expect(pm.response.json()).to.have.property('role');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"badrole@wingz.test\",\n    \"password\": \"securepass123\",\n    \"first_name\": \"Bad\",\n    \"last_name\": \"Role\",\n    \"role\": \"superuser\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/users/", "host": ["{{base_url}}"], "path": ["api", "users", ""] }
+          }
+        },
+
+        {
+          "name": "6.7 Partial update user (PATCH)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('Phone number updated', function() {",
+                  "    pm.expect(pm.response.json().phone_number).to.equal('555-8888');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Token {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n    \"phone_number\": \"555-8888\"\n}" },
+            "url": { "raw": "{{base_url}}/api/users/{{user_id}}/", "host": ["{{base_url}}"], "path": ["api", "users", "{{user_id}}", ""] }
+          }
+        },
+
+        {
+          "name": "6.8 Delete user — does not exist → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', function() { pm.response.to.have.status(404); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/users/99999/", "host": ["{{base_url}}"], "path": ["api", "users", "99999", ""] }
+          }
+        }
+
+      ]
+    }
+
+  ]
+}
