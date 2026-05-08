@@ -36,17 +36,16 @@ git clone https://github.com/kirbsraspberrypi/nemt_django_api.git
 cd nemt_django_api
 
 python3 -m venv env
-source env/bin/activate      # Windows: venv\Scripts\activate
+source env/bin/activate
 
 pip3 install -r requirements.txt
 
-cp .env.example .env          # then edit .env with your DB credentials
+cp .env.example .env
 
 python3 manage.py migrate
 
-python3 manage.py createsuperuser   # create your first admin user
+python3 manage.py createsuperuser
 
-# Optional: load sample data (drivers, riders, 30 rides with events)
 python3 manage.py seed_data
 
 python3 manage.py runserver
